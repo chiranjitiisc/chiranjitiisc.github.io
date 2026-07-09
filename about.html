@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About — Single Core (MD made easy)</title>
+<meta name="description" content="About Single Core (MD made easy): free interactive molecular dynamics simulations for students, by Chiranjit (IISc Bengaluru).">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='11' cy='16' r='6' fill='%234cc9f0'/><circle cx='23' cy='11' r='4' fill='%23f9a03f'/><circle cx='23' cy='22' r='4' fill='%233ddc97'/></svg>">
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+        <line x1="11" y1="16" x2="23" y2="11" stroke="#4cc9f0" stroke-width="2"/>
+        <line x1="11" y1="16" x2="23" y2="22" stroke="#4cc9f0" stroke-width="2"/>
+        <circle cx="11" cy="16" r="6" fill="#4cc9f0"/>
+        <circle cx="23" cy="11" r="4" fill="#f9a03f"/>
+        <circle cx="23" cy="22" r="4" fill="#3ddc97"/>
+      </svg>
+      Single Core <span class="domain">MD made easy</span>
+    </a>
+    <nav class="site-nav">
+      <a href="index.html">Simulations</a>
+      <a href="notes.html">Notes</a>
+      <a href="about.html" class="active">About</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page wrap">
+  <h1>About Single Core</h1>
+  <p class="sub">Molecular dynamics is easier to understand when you can watch it happen.</p>
+
+  <div class="prose">
+    <p>
+      Single Core (MD made easy) is a small, free collection of interactive molecular dynamics simulations.
+      Every simulation runs entirely in your browser using plain HTML and JavaScript —
+      there is nothing to install, no account to create, and nothing to pay.
+      The goal is simple: help students build physical intuition for how atoms move,
+      collide, vibrate and reach equilibrium.
+    </p>
+
+    <h2>What makes these simulations different</h2>
+    <p>
+      These are not cartoons. Each simulation implements the same algorithms used in
+      research MD codes — velocity-Verlet integration, periodic boundary conditions with
+      the minimum-image convention, Lennard-Jones interactions with a shifted cutoff,
+      and velocity-rescaling thermostats. The numbers on screen (temperature, energy,
+      distributions) come from the actual dynamics, so what you observe is real physics,
+      just in two dimensions and at student-friendly system sizes.
+    </p>
+
+    <h2>How to use this site</h2>
+    <p>
+      Each simulation page pairs an experiment with short theory. A good way to learn:
+      run the simulation first and play freely, then read the matching page in the
+      <a href="notes.html">Notes</a> section, then come back and test what you learned —
+      for example, check that total energy is conserved in NVE but not while a thermostat
+      acts, or that the speed histogram really does relax to Maxwell-Boltzmann from any
+      starting condition.
+    </p>
+    <p>
+      Teachers are welcome to use these simulations in lectures, labs and assignments.
+      Everything here is free for educational use (CC BY 4.0) — a link back to
+      <a href="index.html">chiranjitiisc.github.io</a> is appreciated.
+    </p>
+
+    <h2>Who runs this</h2>
+    <p>
+      I am Chiranjit, a researcher at the Indian Institute of Science (IISc), Bengaluru.
+      I built this site because good, free, no-installation MD teaching material is hard
+      to find. New simulations are added over time.
+    </p>
+    <p>
+      Suggestions, bug reports and ideas for new simulations are very welcome:
+      <a href="mailto:chiranjitd@iisc.ac.in">chiranjitd@iisc.ac.in</a>
+    </p>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <span>Single Core (MD made easy) — free for students, forever.</span>
+    <span>Content: CC BY 4.0 · <a href="about.html">About this site</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
