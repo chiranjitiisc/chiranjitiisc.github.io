@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Lennard-Jones Potential &amp; Reduced Units — Single Core (MD made easy)</title>
+<meta name="description" content="What the 12-6 Lennard-Jones potential models, the meaning of sigma and epsilon, reduced units, cutoffs, and periodic boundary conditions with the minimum-image convention.">
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='11' cy='16' r='6' fill='%234cc9f0'/><circle cx='23' cy='11' r='4' fill='%23f9a03f'/><circle cx='23' cy='22' r='4' fill='%233ddc97'/></svg>">
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap">
+    <a class="brand" href="../index.html">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+        <line x1="11" y1="16" x2="23" y2="11" stroke="#4cc9f0" stroke-width="2"/>
+        <line x1="11" y1="16" x2="23" y2="22" stroke="#4cc9f0" stroke-width="2"/>
+        <circle cx="11" cy="16" r="6" fill="#4cc9f0"/>
+        <circle cx="23" cy="11" r="4" fill="#f9a03f"/>
+        <circle cx="23" cy="22" r="4" fill="#3ddc97"/>
+      </svg>
+      Single Core <span class="domain">MD made easy</span>
+    </a>
+    <nav class="site-nav">
+      <a href="../index.html">Simulations</a>
+      <a href="../notes.html" class="active">Notes</a>
+      <a href="../about.html">About</a>
+    </nav>
+  </div>
+</header>
+
+<article class="article">
+  <div class="crumbs"><a href="../notes.html">Notes</a> / Interactions</div>
+  <div class="kicker">Note 2</div>
+  <h1>The Lennard-Jones potential &amp; reduced units</h1>
+  <p class="sub">One equation with two parameters captures why noble gases condense,
+  freeze, and evaporate — and it is the fruit fly of molecular simulation.</p>
+
+  <h2>The 12-6 potential</h2>
+  <div class="eq"><b>V(r) = 4&epsilon; [ (&sigma;/r)<sup>12</sup> &minus; (&sigma;/r)<sup>6</sup> ]</b></div>
+  <p>
+    Two competing effects, one term each:
+  </p>
+  <ul>
+    <li><b>&minus;(&sigma;/r)<sup>6</sup> — attraction.</b> Fluctuating electron clouds induce dipoles in
+    neighbours; this London dispersion force between neutral atoms falls off exactly as
+    r<sup>&minus;6</sup>. This part is real physics.</li>
+    <li><b>+(&sigma;/r)<sup>12</sup> — repulsion.</b> When electron clouds overlap, Pauli exclusion
+    pushes atoms apart very steeply. The true form is roughly exponential; r<sup>&minus;12</sup>
+    is a convenient approximation chosen mostly because it is the square of r<sup>&minus;6</sup>
+    and was cheap to compute in 1924 — and still is.</li>
+  </ul>
+  <p>
+    The two parameters have clean geometric meanings: <b>&sigma;</b> is the separation where
+    V = 0 (an effective atomic diameter), and <b>&epsilon;</b> is the depth of the attractive
+    well. The minimum sits at r<sub>min</sub> = 2<sup>1/6</sup>&sigma; &asymp; 1.122&sigma;,
+    where V = &minus;&epsilon;. For argon, fitted values are &sigma; &asymp; 3.4 &Aring; and
+    &epsilon;/k<sub>B</sub> &asymp; 120 K — which is why argon boils at 87 K: thermal energy
+    comparable to the well depth shakes atoms out of their wells.
+  </p>
+
+  <h2>Reduced units: simulate once, apply everywhere</h2>
+  <p>
+    MD codes set &sigma; = &epsilon; = m = k<sub>B</sub> = 1 and measure everything in these
+    natural scales. One simulation then describes <i>every</i> Lennard-Jones substance —
+    argon, krypton, xenon — just with different conversion factors:
+  </p>
+  <table class="reduced">
+    <tr><th>Quantity</th><th>Reduced form</th><th>For argon, 1 unit =</th></tr>
+    <tr><td>Length</td><td>r* = r/&sigma;</td><td>3.4 &Aring;</td></tr>
+    <tr><td>Energy</td><td>E* = E/&epsilon;</td><td>k<sub>B</sub> &middot; 120 K</td></tr>
+    <tr><td>Temperature</td><td>T* = k<sub>B</sub>T/&epsilon;</td><td>120 K</td></tr>
+    <tr><td>Time</td><td>t* = t / &radic;(m&sigma;&sup2;/&epsilon;)</td><td>&asymp; 2.2 ps</td></tr>
+    <tr><td>Density (2D)</td><td>&rho;* = N&sigma;&sup2;/A</td><td>—</td></tr>
+  </table>
+  <p>
+    So when the <a href="../sims/lennard-jones-fluid.html">LJ fluid simulation</a> shows
+    T* = 0.6, an argon experimentalist reads ~72 K, and the time step &Delta;t* = 0.004
+    corresponds to roughly 9 femtoseconds. Reduced units also keep numbers near 1,
+    which is kind to floating-point arithmetic.
+  </p>
+
+  <h2>Cutoff and shift</h2>
+  <p>
+    V(r) never quite reaches zero, but computing all N(N&minus;1)/2 pair interactions is
+    wasteful when distant pairs contribute almost nothing. Standard practice: ignore pairs
+    beyond a cutoff r<sub>c</sub> (usually 2.5&sigma;, where V &asymp; &minus;0.016&epsilon;)
+    and <b>shift</b> the potential up by V(r<sub>c</sub>) so it hits zero continuously:
+  </p>
+  <div class="eq">V<sub>shifted</sub>(r) = V(r) &minus; V(r<sub>c</sub>) &nbsp; for r &lt; r<sub>c</sub>, &nbsp; 0 otherwise</div>
+  <p>
+    Without the shift, particles crossing the cutoff would feel a tiny energy jump each time
+    — thousands of such jumps add up to visible energy drift in an NVE run.
+  </p>
+
+  <h2>Periodic boundaries &amp; minimum image</h2>
+  <p>
+    A few hundred particles in a box would be mostly surface. To fake bulk matter, the box
+    is tiled with copies of itself: a particle leaving the right edge re-enters on the left
+    (<b>periodic boundary conditions</b>), and each pair interacts only through the nearest
+    of all periodic copies (the <b>minimum-image convention</b>). In code both are one-liners:
+  </p>
+  <pre><code>x  = x - L * floor(x / L)       # wrap position into [0, L)
+dx = dx - L * round(dx / L)     # nearest periodic image of a separation</code></pre>
+  <p>
+    For minimum image to be unambiguous the box must satisfy L &ge; 2r<sub>c</sub>.
+  </p>
+
+  <div class="try">
+    <b>See it live:</b> in the <a href="../sims/lennard-jones-fluid.html">LJ fluid</a>,
+    load the "Gas" preset and watch particles wrap across the box edges. Then quench to
+    T* = 0.1 and watch droplets form — that's the &minus;r<sup>&minus;6</sup> term at work.
+  </div>
+</article>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <span>Single Core (MD made easy) — free for students, forever.</span>
+    <span>Content: CC BY 4.0 · <a href="../about.html">About this site</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

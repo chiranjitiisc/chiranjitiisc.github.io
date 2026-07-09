@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harmonic Chain &amp; Phonons — Single Core (MD made easy)</title>
+<meta name="description" content="Interactive 1D harmonic chain: excite normal modes, launch wavepackets, and watch the phonon dispersion relation and mode energy spectrum in real time.">
+<style>
+  :root {
+    --bg:#0a111f; --panel:#121c30; --panel2:#0e1728; --border:#22304e;
+    --text:#e7edf7; --muted:#90a1ba; --accent:#4cc9f0; --amber:#f9a03f; --green:#3ddc97;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 16px; }
+  header.bar { border-bottom:1px solid var(--border); padding:14px 0; margin-bottom:18px; }
+  header.bar .wrap { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  header.bar h1 { font-size:20px; margin:0; }
+  header.bar .back { font-size:14px; color:var(--muted); }
+  header.bar .back:hover { color:var(--accent); }
+  canvas.chain { width:100%; display:block; border-radius:14px;
+                 border:1px solid var(--border); background:#060b16; }
+  .panels { display:flex; gap:14px; margin-top:14px; flex-wrap:wrap; align-items:stretch; }
+  .panel { background:var(--panel); border:1px solid var(--border);
+           border-radius:14px; padding:14px 16px; }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:1px;
+              color:var(--muted); margin:0 0 10px; }
+  .p-ctrl { flex:1 1 300px; min-width:280px; }
+  .p-disp { flex:1 1 300px; min-width:280px; }
+  .p-spec { flex:1 1 300px; min-width:280px; }
+  canvas.small { width:100%; height:190px; display:block; background:var(--panel2);
+                 border:1px solid var(--border); border-radius:10px; }
+  .row { display:flex; align-items:center; gap:10px; margin:8px 0; flex-wrap:wrap; }
+  .row label { flex:0 0 108px; font-size:13.5px; color:var(--muted); }
+  .row input[type=range] { flex:1; accent-color:var(--accent); min-width:90px; }
+  .row .val { flex:0 0 46px; text-align:right; font-family:ui-monospace,Consolas,monospace; font-size:13px; }
+  select, button { background:var(--panel2); color:var(--text); border:1px solid var(--border);
+                   border-radius:8px; padding:7px 12px; font-size:14px; cursor:pointer; }
+  select:hover, button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#06212e; font-weight:700; border-color:var(--accent); }
+  .btnrow { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0; }
+  .readout { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .stat { background:var(--panel2); border:1px solid var(--border); border-radius:10px;
+          padding:6px 10px; font-size:12.5px; color:var(--muted); }
+  .stat b { font-family:ui-monospace,Consolas,monospace; color:var(--text); font-weight:600; }
+  .theory { max-width:860px; margin:34px auto 60px; padding:0 16px; }
+  .theory h2 { font-size:20px; }
+  .theory p, .theory li { color:#c6d1e2; font-size:15.5px; }
+  .theory .try { background:rgba(76,201,240,0.1); border:1px solid rgba(76,201,240,0.4);
+                 border-radius:10px; padding:12px 18px; }
+  .theory .try b { color:var(--accent); }
+  .eq { font-family:Georgia,serif; font-style:italic; font-size:17px; text-align:center;
+        background:var(--panel2); border:1px solid var(--border); border-left:3px solid var(--accent);
+        border-radius:10px; padding:12px; margin:16px 0; }
+  footer { border-top:1px solid var(--border); color:var(--muted); font-size:13.5px;
+           padding:18px 0 26px; text-align:center; }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <a class="back" href="../index.html">&larr; Single Core / all simulations</a>
+    <h1>Harmonic Chain &amp; Phonons <span style="color:var(--muted);font-weight:400">— normal modes of a 1D crystal</span></h1>
+  </div>
+</header>
+
+<div class="wrap">
+  <canvas id="chain" class="chain" width="1088" height="300"></canvas>
+
+  <div class="panels">
+    <div class="panel p-ctrl">
+      <h2>Controls</h2>
+      <div class="btnrow">
+        <button id="runBtn" class="primary">&#9654; Run</button>
+        <button id="clearBtn">Clear</button>
+      </div>
+      <div class="row">
+        <label for="modeSlider">Mode n</label>
+        <input type="range" id="modeSlider" min="1" max="48" step="1" value="3">
+        <span class="val" id="modeVal">3</span>
+      </div>
+      <div class="row">
+        <label for="ampSlider">Amplitude</label>
+        <input type="range" id="ampSlider" min="0.2" max="3" step="0.1" value="1.5">
+        <span class="val" id="ampVal">1.5</span>
+      </div>
+      <div class="btnrow">
+        <button id="exciteBtn">+ Add mode n</button>
+        <button id="pluckBtn">Pluck centre</button>
+        <button id="packetBtn">Wavepacket &rarr;</button>
+      </div>
+      <div class="row">
+        <label for="nSelect">Atoms N</label>
+        <select id="nSelect"><option>24</option><option selected>48</option><option>72</option><option>96</option></select>
+      </div>
+      <div class="row">
+        <label for="spSlider">Sim speed</label>
+        <input type="range" id="spSlider" min="1" max="20" step="1" value="6">
+        <span class="val" id="spVal">6&times;</span>
+      </div>
+      <div class="readout">
+        <span class="stat">&omega;<sub>n</sub> = <b id="sOmega">–</b></span>
+        <span class="stat">period = <b id="sPeriod">–</b></span>
+        <span class="stat">E total = <b id="sE">0</b></span>
+      </div>
+    </div>
+
+    <div class="panel p-disp">
+      <h2>Dispersion relation &omega;(q) — dot size = mode energy</h2>
+      <canvas id="disp" class="small" width="640" height="380"></canvas>
+    </div>
+
+    <div class="panel p-spec">
+      <h2>Energy per mode E<sub>n</sub></h2>
+      <canvas id="spec" class="small" width="640" height="380"></canvas>
+    </div>
+  </div>
+</div>
+
+<section class="theory">
+  <h2>What am I looking at?</h2>
+  <p>
+    N identical atoms (mass m = 1) sit on a line, coupled to their neighbours by ideal
+    springs (k = 1) with both ends clamped to walls. Displacements are drawn vertically so
+    you can see them, and the equations of motion
+    <i>m&uuml;<sub>i</sub> = k(u<sub>i+1</sub> &minus; 2u<sub>i</sub> + u<sub>i&minus;1</sub>)</i>
+    are integrated with velocity-Verlet — the same integrator used in the
+    <a href="lennard-jones-fluid.html">Lennard-Jones simulation</a>.
+  </p>
+  <p>
+    This system has exactly N independent <b>normal modes</b> (standing waves). Mode n has shape
+    sin(inπ/(N+1)) and oscillates at
+  </p>
+  <div class="eq">&omega;<sub>n</sub> = 2&radic;(k/m) &middot; sin( q<sub>n</sub>a / 2 ),
+        &nbsp;&nbsp; q<sub>n</sub> = n&pi; / (N+1)a</div>
+  <p>
+    — the <b>phonon dispersion relation</b> of a 1D crystal. At small q it is linear
+    (&omega; &asymp; cq: sound waves); near the zone boundary q = &pi;/a it flattens
+    (zero group velocity). The right-hand panels decompose the chain's motion into modes in
+    real time: because the springs are harmonic, the modes never exchange energy — each bar
+    in the spectrum stays constant while the atoms themselves move in complicated ways.
+  </p>
+  <div class="try">
+    <b>Things to try:</b>
+    <ul>
+      <li>Add mode 1, then mode 5 on top — the motion looks complex, but the spectrum shows just two frozen bars: superposition at work.</li>
+      <li>Compare mode 2 and the highest mode: read their &omega; off the dispersion plot, check the periods on screen.</li>
+      <li>Pluck the centre — a localized kick excites <i>many</i> modes at once (odd ones only — why?).</li>
+      <li>Launch a wavepacket and watch it move at the group velocity and spread out — dispersion in action. Near the zone boundary it barely moves.</li>
+    </ul>
+  </div>
+  <p>
+    Background reading: <a href="../notes/velocity-verlet.html">Verlet integration</a> ·
+    <a href="../notes/temperature-ensembles.html">temperature &amp; equipartition</a>.
+  </p>
+</section>
+
+<footer><a href="../index.html">Single Core (MD made easy)</a> — free for students, forever.</footer>
+
+<script>
+"use strict";
+/* ================================================================
+   1D harmonic chain, fixed ends. k = m = a = 1.
+   Modes: u_i ~ sin(i n pi/(N+1)),  omega_n = 2 sin(n pi/(2(N+1)))
+   ================================================================ */
+
+const DT = 0.06;
+let N = 48;
+let U, V, F;                 // displacement, velocity, force
+let running = false, substeps = 6, time = 0;
+let selMode = 3, amp = 1.5;
+
+function omega(n) { return 2 * Math.sin(n * Math.PI / (2 * (N + 1))); }
+
+function alloc() {
+  U = new Float64Array(N); V = new Float64Array(N); F = new Float64Array(N);
+  time = 0;
+}
+
+function forces() {
+  for (let i = 0; i < N; i++) {
+    const uL = i > 0 ? U[i - 1] : 0;        // fixed walls
+    const uR = i < N - 1 ? U[i + 1] : 0;
+    F[i] = uL - 2 * U[i] + uR;
+  }
+}
+
+function step() {
+  const h = 0.5 * DT;
+  for (let i = 0; i < N; i++) { V[i] += h * F[i]; U[i] += DT * V[i]; }
+  forces();
+  for (let i = 0; i < N; i++) V[i] += h * F[i];
+  time += DT;
+}
+
+/* ---------- excitations (additive) ---------- */
+function addMode(n, A) {
+  for (let i = 0; i < N; i++)
+    U[i] += A * Math.sin((i + 1) * n * Math.PI / (N + 1));
+  forces();
+}
+function pluck(A) {
+  U[Math.floor(N / 2)] += A;
+  forces();
+}
+function wavepacket(A) {
+  // right-moving packet: carrier q0 mid-zone, group velocity vg = dω/dq = cos(q0/2)
+  const q0 = Math.PI / 3, i0 = Math.floor(N / 4), w = Math.max(2.5, N / 14);
+  const vg = Math.cos(q0 / 2);
+  const p = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    const s = i - i0;
+    p[i] = A * Math.exp(-s * s / (2 * w * w)) * Math.cos(q0 * s);
+  }
+  // for u = f(x - vg t):  du/dt = -vg du/dx  (central difference on the packet only)
+  for (let i = 0; i < N; i++) {
+    const pL = i > 0 ? p[i - 1] : 0, pR = i < N - 1 ? p[i + 1] : 0;
+    U[i] += p[i];
+    V[i] += -vg * 0.5 * (pR - pL);
+  }
+  forces();
+}
+
+/* ---------- mode decomposition ---------- */
+let modeE;                    // energy per mode
+function decompose() {
+  modeE = new Float64Array(N);
+  const norm = Math.sqrt(2 / (N + 1));
+  for (let n = 1; n <= N; n++) {
+    let a = 0, ad = 0;
+    for (let i = 0; i < N; i++) {
+      const s = Math.sin((i + 1) * n * Math.PI / (N + 1));
+      a += U[i] * s; ad += V[i] * s;
+    }
+    a *= norm; ad *= norm;
+    const w = omega(n);
+    modeE[n - 1] = 0.5 * ad * ad + 0.5 * w * w * a * a;
+  }
+}
+
+/* ---------- drawing ---------- */
+const chain = document.getElementById("chain");
+const cctx = chain.getContext("2d");
+const disp = document.getElementById("disp");
+const dctx = disp.getContext("2d");
+const spec = document.getElementById("spec");
+const sctx = spec.getContext("2d");
+
+function drawChain() {
+  const W = chain.width, H = chain.height, mid = H / 2;
+  cctx.clearRect(0, 0, W, H);
+  const pad = 30;
+  const dx = (W - 2 * pad) / (N + 1);
+  const yScale = (H / 2 - 24) / 3.2;
+
+  // walls
+  cctx.fillStyle = "#22304e";
+  cctx.fillRect(pad - 8, mid - 46, 6, 92);
+  cctx.fillRect(W - pad + 2, mid - 46, 6, 92);
+  // equilibrium line
+  cctx.strokeStyle = "rgba(144,161,186,0.25)"; cctx.setLineDash([4, 6]);
+  cctx.beginPath(); cctx.moveTo(pad, mid); cctx.lineTo(W - pad, mid); cctx.stroke();
+  cctx.setLineDash([]);
+
+  // springs
+  cctx.strokeStyle = "rgba(76,201,240,0.5)"; cctx.lineWidth = 1.6;
+  cctx.beginPath();
+  cctx.moveTo(pad, mid);
+  for (let i = 0; i < N; i++) cctx.lineTo(pad + (i + 1) * dx, mid - U[i] * yScale);
+  cctx.lineTo(W - pad, mid);
+  cctx.stroke();
+
+  // atoms
+  for (let i = 0; i < N; i++) {
+    const x = pad + (i + 1) * dx, y = mid - U[i] * yScale;
+    cctx.fillStyle = "#f9a03f";
+    cctx.beginPath(); cctx.arc(x, y, Math.min(7, dx * 0.32), 0, 6.2832); cctx.fill();
+  }
+}
+
+function drawDispersion() {
+  const W = disp.width, H = disp.height;
+  const padL = 40, padB = 34, padT = 14, padR = 12;
+  const pw = W - padL - padR, ph = H - padT - padB;
+  dctx.clearRect(0, 0, W, H);
+  dctx.strokeStyle = "#22304e"; dctx.strokeRect(padL, padT, pw, ph);
+
+  const xOf = q => padL + q / Math.PI * pw;
+  const yOf = w => padT + ph - (w / 2.05) * ph;
+
+  // theory curve
+  dctx.strokeStyle = "rgba(144,161,186,0.8)"; dctx.lineWidth = 2;
+  dctx.beginPath();
+  for (let px = 0; px <= pw; px += 2) {
+    const q = px / pw * Math.PI;
+    const w = 2 * Math.sin(q / 2);
+    px === 0 ? dctx.moveTo(padL + px, yOf(w)) : dctx.lineTo(padL + px, yOf(w));
+  }
+  dctx.stroke();
+
+  // mode dots, size ~ energy
+  let eMax = 1e-9;
+  for (let n = 0; n < N; n++) if (modeE[n] > eMax) eMax = modeE[n];
+  for (let n = 1; n <= N; n++) {
+    const q = n * Math.PI / (N + 1), w = omega(n);
+    const r = 2 + 6 * Math.sqrt(modeE[n - 1] / eMax);
+    dctx.fillStyle = modeE[n - 1] / eMax > 0.02 ? "#4cc9f0" : "rgba(76,201,240,0.35)";
+    dctx.beginPath(); dctx.arc(xOf(q), yOf(w), r, 0, 6.2832); dctx.fill();
+    if (n === selMode) {
+      dctx.strokeStyle = "#f9a03f"; dctx.lineWidth = 2;
+      dctx.beginPath(); dctx.arc(xOf(q), yOf(w), r + 3, 0, 6.2832); dctx.stroke();
+    }
+  }
+
+  dctx.fillStyle = "#90a1ba"; dctx.font = "12px ui-monospace, monospace";
+  dctx.fillText("0", padL - 4, H - 14);
+  dctx.fillText("q →", padL + pw / 2 - 10, H - 14);
+  dctx.fillText("π/a", padL + pw - 14, H - 14);
+  dctx.fillText("ω", 12, padT + 12);
+  dctx.fillText("2", padL - 16, yOf(2) + 4);
+}
+
+function drawSpectrum() {
+  const W = spec.width, H = spec.height;
+  const padL = 34, padB = 30, padT = 12, padR = 10;
+  const pw = W - padL - padR, ph = H - padT - padB;
+  sctx.clearRect(0, 0, W, H);
+  sctx.strokeStyle = "#22304e"; sctx.strokeRect(padL, padT, pw, ph);
+
+  let eMax = 1e-9;
+  for (let n = 0; n < N; n++) if (modeE[n] > eMax) eMax = modeE[n];
+  const bw = pw / N;
+  for (let n = 0; n < N; n++) {
+    const h = (modeE[n] / (1.15 * eMax)) * ph;
+    sctx.fillStyle = (n + 1 === selMode) ? "#f9a03f" : "rgba(76,201,240,0.7)";
+    sctx.fillRect(padL + n * bw + 0.5, padT + ph - h, Math.max(1, bw - 1), h);
+  }
+  sctx.fillStyle = "#90a1ba"; sctx.font = "12px ui-monospace, monospace";
+  sctx.fillText("1", padL, H - 10);
+  sctx.fillText("mode n →", padL + pw / 2 - 26, H - 10);
+  sctx.fillText(String(N), padL + pw - 16, H - 10);
+}
+
+function totalEnergy() {
+  // KE + PE over the N+1 springs (walls included)
+  let e = 0;
+  for (let i = 0; i < N; i++) e += 0.5 * V[i] * V[i];
+  let prev = 0;
+  for (let i = 0; i <= N; i++) {
+    const cur = i < N ? U[i] : 0;
+    e += 0.5 * (cur - prev) * (cur - prev);
+    prev = cur;
+  }
+  return e;
+}
+
+function renderAll() {
+  decompose();
+  drawChain(); drawDispersion(); drawSpectrum();
+  const w = omega(selMode);
+  document.getElementById("sOmega").textContent = w.toFixed(3);
+  document.getElementById("sPeriod").textContent = (2 * Math.PI / w).toFixed(2);
+  document.getElementById("sE").textContent = totalEnergy().toFixed(3);
+}
+
+/* ---------- loop ---------- */
+function frame() {
+  if (running) {
+    for (let s = 0; s < substeps; s++) step();
+    renderAll();
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+$("runBtn").onclick = () => {
+  running = !running;
+  $("runBtn").innerHTML = running ? "&#10074;&#10074; Pause" : "&#9654; Run";
+};
+$("clearBtn").onclick = () => { alloc(); forces(); renderAll(); };
+$("modeSlider").oninput = e => {
+  selMode = parseInt(e.target.value, 10);
+  $("modeVal").textContent = selMode;
+  renderAll();
+};
+$("ampSlider").oninput = e => {
+  amp = parseFloat(e.target.value);
+  $("ampVal").textContent = amp.toFixed(1);
+};
+$("exciteBtn").onclick = () => { addMode(selMode, amp); renderAll(); };
+$("pluckBtn").onclick = () => { pluck(amp * 1.4); renderAll(); };
+$("packetBtn").onclick = () => { wavepacket(amp * 0.8); renderAll(); };
+$("nSelect").onchange = e => {
+  N = parseInt(e.target.value, 10);
+  const ms = $("modeSlider");
+  ms.max = N;
+  if (selMode > N) { selMode = N; ms.value = N; $("modeVal").textContent = N; }
+  alloc(); forces(); renderAll();
+};
+$("spSlider").oninput = e => {
+  substeps = parseInt(e.target.value, 10);
+  $("spVal").innerHTML = substeps + "&times;";
+};
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" && e.target.tagName !== "BUTTON" &&
+      e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") {
+    e.preventDefault(); $("runBtn").click();
+  }
+});
+
+/* ---------- go ---------- */
+alloc(); forces();
+addMode(3, 1.5);      // start with something pretty on screen
+renderAll();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

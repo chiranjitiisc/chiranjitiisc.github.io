@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lennard-Jones Fluid (NVE/NVT) — Single Core (MD made easy)</title>
+<meta name="description" content="Interactive 2D Lennard-Jones molecular dynamics simulation: velocity-Verlet, periodic boundaries, Berendsen thermostat, live energy and temperature plots.">
+<style>
+  :root {
+    --bg:#0a111f; --panel:#121c30; --panel2:#0e1728; --border:#22304e;
+    --text:#e7edf7; --muted:#90a1ba; --accent:#4cc9f0; --amber:#f9a03f; --green:#3ddc97;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 16px; }
+  header.bar {
+    border-bottom:1px solid var(--border); padding:14px 0; margin-bottom:18px;
+  }
+  header.bar .wrap { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  header.bar h1 { font-size:20px; margin:0; }
+  header.bar .back { font-size:14px; color:var(--muted); }
+  header.bar .back:hover { color:var(--accent); }
+
+  .layout { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+  .sim-col { flex:1 1 480px; min-width:320px; }
+  .side-col { flex:0 1 360px; min-width:300px; display:flex; flex-direction:column; gap:14px; }
+
+  canvas.box {
+    width:100%; display:block; border-radius:14px;
+    border:1px solid var(--border); background:#060b16;
+  }
+  .panel {
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:14px; padding:14px 16px;
+  }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:1px;
+              color:var(--muted); margin:0 0 10px; }
+  .row { display:flex; align-items:center; gap:10px; margin:8px 0; flex-wrap:wrap; }
+  .row label { flex:0 0 118px; font-size:13.5px; color:var(--muted); }
+  .row input[type=range] { flex:1; accent-color:var(--accent); min-width:100px; }
+  .row .val { flex:0 0 52px; text-align:right; font-family:ui-monospace,Consolas,monospace;
+              font-size:13px; color:var(--text); }
+  select, button {
+    background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; padding:7px 12px; font-size:14px; cursor:pointer;
+  }
+  select:hover, button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#06212e; font-weight:700; border-color:var(--accent); }
+  button.primary:hover { filter:brightness(1.1); }
+  .btnrow { display:flex; gap:8px; flex-wrap:wrap; }
+  .seg { display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .seg button { border:none; border-radius:0; background:var(--panel2); padding:7px 14px; }
+  .seg button.on { background:var(--accent); color:#06212e; font-weight:700; }
+  .presets button { font-size:13px; }
+
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .stat { background:var(--panel2); border:1px solid var(--border); border-radius:10px;
+          padding:8px 10px; }
+  .stat .k { font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; }
+  .stat .v { font-family:ui-monospace,Consolas,monospace; font-size:15px; }
+  canvas.plot { width:100%; height:120px; display:block; background:var(--panel2);
+                border:1px solid var(--border); border-radius:10px; }
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--muted); margin-top:6px; flex-wrap:wrap; }
+  .legend b { font-weight:600; }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px;
+        vertical-align:-1px; }
+
+  .theory { max-width:860px; margin:34px auto 60px; padding:0 16px; }
+  .theory h2 { font-size:20px; }
+  .theory p, .theory li { color:#c6d1e2; font-size:15.5px; }
+  .theory .try { background:rgba(76,201,240,0.1); border:1px solid rgba(76,201,240,0.4);
+                 border-radius:10px; padding:12px 18px; }
+  .theory .try b { color:var(--accent); }
+  footer { border-top:1px solid var(--border); color:var(--muted); font-size:13.5px;
+           padding:18px 0 26px; text-align:center; }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <a class="back" href="../index.html">&larr; Single Core / all simulations</a>
+    <h1>Lennard-Jones Fluid <span style="color:var(--muted);font-weight:400">— 2D, velocity-Verlet, periodic boundaries</span></h1>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="layout">
+
+    <div class="sim-col">
+      <canvas id="box" class="box" width="660" height="660"></canvas>
+      <div class="legend" style="margin-top:8px">
+        <span>Particle colour = speed:</span>
+        <span><span class="sw" style="background:#4977f0"></span>slow</span>
+        <span><span class="sw" style="background:#e2e8f0"></span>medium</span>
+        <span><span class="sw" style="background:#f97316"></span>fast</span>
+        <span style="margin-left:auto">Box is periodic — particles leaving one side re-enter opposite.</span>
+      </div>
+    </div>
+
+    <div class="side-col">
+      <div class="panel">
+        <div class="btnrow" style="margin-bottom:10px">
+          <button id="runBtn" class="primary">&#9654; Run</button>
+          <button id="stepBtn">Step</button>
+          <button id="resetBtn">Reset</button>
+          <button id="rescaleBtn" title="Rescale velocities to the target temperature (useful in NVE)">Rescale v</button>
+        </div>
+        <div class="row">
+          <label>Ensemble</label>
+          <div class="seg">
+            <button id="nveBtn">NVE</button>
+            <button id="nvtBtn" class="on">NVT</button>
+          </div>
+        </div>
+        <div class="row">
+          <label for="tempSlider">Target T*</label>
+          <input type="range" id="tempSlider" min="0.05" max="2" step="0.05" value="0.60">
+          <span class="val" id="tempVal">0.60</span>
+        </div>
+        <div class="row">
+          <label for="rhoSlider">Density &rho;*</label>
+          <input type="range" id="rhoSlider" min="0.05" max="0.85" step="0.05" value="0.60">
+          <span class="val" id="rhoVal">0.60</span>
+        </div>
+        <div class="row">
+          <label for="nSelect">Particles N</label>
+          <select id="nSelect">
+            <option>64</option><option selected>100</option><option>144</option><option>196</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="speedSlider">Sim speed</label>
+          <input type="range" id="speedSlider" min="1" max="40" step="1" value="15">
+          <span class="val" id="speedVal">15&times;</span>
+        </div>
+        <div class="row presets">
+          <label>Presets</label>
+          <div class="btnrow">
+            <button id="preSolid">Cold crystal</button>
+            <button id="preLiquid">Liquid</button>
+            <button id="preGas">Gas</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Instantaneous state</h2>
+        <div class="stats">
+          <div class="stat"><div class="k">T*</div><div class="v" id="sT">–</div></div>
+          <div class="stat"><div class="k">E/N</div><div class="v" id="sE">–</div></div>
+          <div class="stat"><div class="k">time t*</div><div class="v" id="sTime">–</div></div>
+          <div class="stat"><div class="k">KE/N</div><div class="v" id="sKE">–</div></div>
+          <div class="stat"><div class="k">PE/N</div><div class="v" id="sPE">–</div></div>
+          <div class="stat"><div class="k">Box L</div><div class="v" id="sL">–</div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Energy per particle</h2>
+        <canvas id="ePlot" class="plot" width="640" height="240"></canvas>
+        <div class="legend">
+          <span><span class="sw" style="background:#f9a03f"></span><b>KE/N</b></span>
+          <span><span class="sw" style="background:#4cc9f0"></span><b>PE/N</b></span>
+          <span><span class="sw" style="background:#e7edf7"></span><b>E/N (total)</b></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Temperature</h2>
+        <canvas id="tPlot" class="plot" width="640" height="200"></canvas>
+        <div class="legend">
+          <span><span class="sw" style="background:#3ddc97"></span><b>T* (kinetic)</b></span>
+          <span><span class="sw" style="background:#90a1ba"></span><b>target (dashed, NVT)</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="theory">
+  <h2>What am I looking at?</h2>
+  <p>
+    N particles interact through the Lennard-Jones 12-6 potential,
+    <i>V(r) = 4&epsilon;[(&sigma;/r)<sup>12</sup> &minus; (&sigma;/r)<sup>6</sup>]</i>,
+    in reduced units (&sigma; = &epsilon; = m = k<sub>B</sub> = 1). Newton's equations are integrated
+    with the velocity-Verlet algorithm (&Delta;t* = 0.004), the box uses periodic boundary
+    conditions with the minimum-image convention, and the potential is cut off and shifted
+    at r<sub>c</sub> = 2.5&sigma; — exactly the ingredients of a research MD code.
+  </p>
+  <p>
+    In <b>NVE</b> the system is isolated: total energy E should stay constant (watch the white
+    line — small wiggles in KE and PE mirror each other). In <b>NVT</b> a Berendsen-type
+    velocity-rescaling thermostat gently drives the kinetic temperature toward the target.
+    The kinetic temperature is computed from equipartition,
+    <i>T* = 2&middot;KE / (2N &minus; 2)</i> (two degrees of freedom per particle in 2D, minus
+    the frozen centre-of-mass motion).
+  </p>
+  <div class="try">
+    <b>Things to try:</b>
+    <ul>
+      <li><b>Melt a crystal.</b> Load the "Cold crystal" preset, run in NVT, then slowly raise T* past ~0.4 and watch the lattice lose order.</li>
+      <li><b>Test energy conservation.</b> Switch to NVE and check that E/N stays flat while KE and PE trade places.</li>
+      <li><b>Quench a gas.</b> Load "Gas", then set T* = 0.1 in NVT — droplets condense as the thermostat removes kinetic energy.</li>
+      <li><b>Break the integrator.</b> Raise sim speed to max at high density and T*; if you crank conditions hard enough you may see E/N drift — a lesson in time-step stability.</li>
+    </ul>
+  </div>
+  <p>
+    Background reading in the notes:
+    <a href="../notes/velocity-verlet.html">Verlet integration</a> ·
+    <a href="../notes/lennard-jones-potential.html">the LJ potential &amp; reduced units</a> ·
+    <a href="../notes/temperature-ensembles.html">temperature &amp; ensembles</a>.
+  </p>
+</section>
+
+<footer><a href="../index.html">Single Core (MD made easy)</a> — free for students, forever.</footer>
+
+<script>
+"use strict";
+/* ================================================================
+   2D Lennard-Jones MD — velocity Verlet + PBC + Berendsen rescale
+   Reduced units: sigma = epsilon = m = kB = 1
+   ================================================================ */
+
+const DT = 0.004;          // time step
+const RC = 2.5;            // cutoff radius
+const RC2 = RC * RC;
+const VSHIFT = 4 * (Math.pow(RC, -12) - Math.pow(RC, -6)); // potential shift
+const TAU = 0.4;           // Berendsen time constant
+
+let N = 100, rho = 0.60, T0 = 0.60, L = Math.sqrt(N / rho);
+let ensemble = "nvt";
+let stepsPerFrame = 15;
+let running = false;
+let time = 0;
+
+let X, Y, VX, VY, FX, FY;   // Float64Array state
+let peCurrent = 0;
+
+/* ---------- initialisation ---------- */
+function gaussian() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function init() {
+  L = Math.sqrt(N / rho);
+  X = new Float64Array(N); Y = new Float64Array(N);
+  VX = new Float64Array(N); VY = new Float64Array(N);
+  FX = new Float64Array(N); FY = new Float64Array(N);
+
+  // square lattice with a little jitter
+  const n = Math.ceil(Math.sqrt(N));
+  const a = L / n;
+  for (let i = 0; i < N; i++) {
+    const gx = i % n, gy = Math.floor(i / n);
+    X[i] = (gx + 0.5) * a + 0.05 * a * (Math.random() - 0.5);
+    Y[i] = (gy + 0.5) * a + 0.05 * a * (Math.random() - 0.5);
+  }
+
+  // Maxwell-Boltzmann velocities at T0, zero net momentum, exact rescale
+  let px = 0, py = 0;
+  for (let i = 0; i < N; i++) {
+    VX[i] = gaussian(); VY[i] = gaussian();
+    px += VX[i]; py += VY[i];
+  }
+  for (let i = 0; i < N; i++) { VX[i] -= px / N; VY[i] -= py / N; }
+  rescaleTo(T0);
+
+  peCurrent = computeForces();
+  time = 0;
+  history.e.length = 0; history.t.length = 0;
+}
+
+function kineticEnergy() {
+  let ke = 0;
+  for (let i = 0; i < N; i++) ke += VX[i] * VX[i] + VY[i] * VY[i];
+  return 0.5 * ke;
+}
+function temperature() {                 // 2D, COM removed: dof = 2N - 2
+  return 2 * kineticEnergy() / (2 * N - 2);
+}
+function rescaleTo(T) {
+  const Tcur = temperature();
+  if (Tcur <= 1e-12) return;
+  const s = Math.sqrt(T / Tcur);
+  for (let i = 0; i < N; i++) { VX[i] *= s; VY[i] *= s; }
+}
+
+/* ---------- forces (O(N^2) with cutoff, minimum image) ---------- */
+function computeForces() {
+  FX.fill(0); FY.fill(0);
+  let pe = 0;
+  for (let i = 0; i < N - 1; i++) {
+    const xi = X[i], yi = Y[i];
+    for (let j = i + 1; j < N; j++) {
+      let dx = xi - X[j], dy = yi - Y[j];
+      dx -= L * Math.round(dx / L);       // minimum image
+      dy -= L * Math.round(dy / L);
+      const r2 = dx * dx + dy * dy;
+      if (r2 < RC2 && r2 > 1e-12) {
+        const inv2 = 1 / r2;
+        const inv6 = inv2 * inv2 * inv2;
+        // F(r)/r = 24 (2 r^-14 - r^-8) = 24 inv2 inv6 (2 inv6 - 1)
+        const fOverR = 24 * inv2 * inv6 * (2 * inv6 - 1);
+        FX[i] += fOverR * dx; FY[i] += fOverR * dy;
+        FX[j] -= fOverR * dx; FY[j] -= fOverR * dy;
+        pe += 4 * inv6 * (inv6 - 1) - VSHIFT;   // shifted LJ potential
+      }
+    }
+  }
+  return pe;
+}
+
+/* ---------- one velocity-Verlet step ---------- */
+function step() {
+  const h = 0.5 * DT;
+  for (let i = 0; i < N; i++) {           // half kick + drift
+    VX[i] += h * FX[i]; VY[i] += h * FY[i];
+    X[i] += DT * VX[i]; Y[i] += DT * VY[i];
+    X[i] -= L * Math.floor(X[i] / L);     // wrap into [0, L)
+    Y[i] -= L * Math.floor(Y[i] / L);
+  }
+  peCurrent = computeForces();
+  for (let i = 0; i < N; i++) {           // half kick
+    VX[i] += h * FX[i]; VY[i] += h * FY[i];
+  }
+  if (ensemble === "nvt") {               // Berendsen velocity rescale
+    const T = temperature();
+    if (T > 1e-12) {
+      let lam = Math.sqrt(1 + (DT / TAU) * (T0 / T - 1));
+      lam = Math.min(1.25, Math.max(0.8, lam));
+      for (let i = 0; i < N; i++) { VX[i] *= lam; VY[i] *= lam; }
+    }
+  }
+  time += DT;
+}
+
+/* ---------- drawing ---------- */
+const box = document.getElementById("box");
+const bctx = box.getContext("2d");
+
+function speedColor(s) {   // s in [0,1]: blue -> white -> orange
+  if (s < 0.5) {
+    const t = s / 0.5;
+    return `rgb(${Math.round(73+(226-73)*t)},${Math.round(119+(232-119)*t)},${Math.round(240+(240-240)*t)})`;
+  }
+  const t = (s - 0.5) / 0.5;
+  return `rgb(${Math.round(226+(249-226)*t)},${Math.round(232+(115-232)*t)},${Math.round(240+(22-240)*t)})`;
+}
+
+function draw() {
+  const W = box.width;
+  bctx.clearRect(0, 0, W, W);
+  const scale = W / L;
+  const r = Math.max(2, 0.5 * scale);
+  const vRef = 2.2 * Math.sqrt(Math.max(T0, 0.08));
+  for (let i = 0; i < N; i++) {
+    const v = Math.sqrt(VX[i] * VX[i] + VY[i] * VY[i]);
+    bctx.fillStyle = speedColor(Math.min(1, v / vRef));
+    bctx.beginPath();
+    bctx.arc(X[i] * scale, Y[i] * scale, r, 0, 6.2832);
+    bctx.fill();
+  }
+}
+
+/* ---------- rolling plots ---------- */
+const history = { e: [], t: [] };   // e: [ke,pe,tot], t: [T]
+const MAXPTS = 420;
+
+function drawSeries(canvas, rows, colors, extras) {
+  const c = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  c.clearRect(0, 0, W, H);
+  if (rows.length < 2) return;
+  let lo = Infinity, hi = -Infinity;
+  for (const row of rows) for (const v of row) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  if (extras) for (const v of extras) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  const pad = 0.08 * (hi - lo || 1);
+  lo -= pad; hi += pad;
+  const yOf = v => H - (v - lo) / (hi - lo) * H;
+  const xOf = i => i / (MAXPTS - 1) * W;
+  const nSeries = rows[0].length;
+  for (let s = 0; s < nSeries; s++) {
+    c.strokeStyle = colors[s]; c.lineWidth = 1.6; c.beginPath();
+    for (let i = 0; i < rows.length; i++) {
+      const px = xOf(i + (MAXPTS - rows.length)), py = yOf(rows[i][s]);
+      i === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
+    }
+    c.stroke();
+  }
+  if (extras) {           // dashed reference lines
+    c.strokeStyle = "#90a1ba"; c.setLineDash([5, 5]); c.lineWidth = 1;
+    for (const v of extras) {
+      c.beginPath(); c.moveTo(0, yOf(v)); c.lineTo(W, yOf(v)); c.stroke();
+    }
+    c.setLineDash([]);
+  }
+  // min / max labels
+  c.fillStyle = "#90a1ba"; c.font = "11px ui-monospace, monospace";
+  c.fillText(hi.toFixed(3), 6, 13);
+  c.fillText(lo.toFixed(3), 6, H - 5);
+}
+
+const ePlot = document.getElementById("ePlot");
+const tPlot = document.getElementById("tPlot");
+
+function sampleAndRender() {
+  const ke = kineticEnergy(), T = temperature();
+  history.e.push([ke / N, peCurrent / N, (ke + peCurrent) / N]);
+  history.t.push([T]);
+  if (history.e.length > MAXPTS) history.e.shift();
+  if (history.t.length > MAXPTS) history.t.shift();
+
+  drawSeries(ePlot, history.e, ["#f9a03f", "#4cc9f0", "#e7edf7"]);
+  drawSeries(tPlot, history.t, ["#3ddc97"], ensemble === "nvt" ? [T0] : null);
+
+  document.getElementById("sT").textContent = T.toFixed(3);
+  document.getElementById("sKE").textContent = (ke / N).toFixed(3);
+  document.getElementById("sPE").textContent = (peCurrent / N).toFixed(3);
+  document.getElementById("sE").textContent = ((ke + peCurrent) / N).toFixed(3);
+  document.getElementById("sTime").textContent = time.toFixed(1);
+  document.getElementById("sL").textContent = L.toFixed(2) + " σ";
+  draw();
+}
+
+/* ---------- main loop ---------- */
+function frame() {
+  if (running) {
+    for (let s = 0; s < stepsPerFrame; s++) step();
+    sampleAndRender();
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- UI wiring ---------- */
+const $ = id => document.getElementById(id);
+
+$("runBtn").onclick = () => {
+  running = !running;
+  $("runBtn").innerHTML = running ? "&#10074;&#10074; Pause" : "&#9654; Run";
+};
+$("stepBtn").onclick = () => { step(); sampleAndRender(); };
+$("resetBtn").onclick = () => { init(); sampleAndRender(); };
+$("rescaleBtn").onclick = () => { rescaleTo(T0); sampleAndRender(); };
+
+$("nveBtn").onclick = () => setEnsemble("nve");
+$("nvtBtn").onclick = () => setEnsemble("nvt");
+function setEnsemble(e) {
+  ensemble = e;
+  $("nveBtn").classList.toggle("on", e === "nve");
+  $("nvtBtn").classList.toggle("on", e === "nvt");
+}
+
+$("tempSlider").oninput = e => {
+  T0 = parseFloat(e.target.value);
+  $("tempVal").textContent = T0.toFixed(2);
+};
+$("rhoSlider").oninput = e => {
+  rho = parseFloat(e.target.value);
+  $("rhoVal").textContent = rho.toFixed(2);
+  init(); sampleAndRender();
+};
+$("nSelect").onchange = e => {
+  N = parseInt(e.target.value, 10);
+  init(); sampleAndRender();
+};
+$("speedSlider").oninput = e => {
+  stepsPerFrame = parseInt(e.target.value, 10);
+  $("speedVal").innerHTML = stepsPerFrame + "&times;";
+};
+
+function preset(newRho, newT, ens) {
+  rho = newRho; T0 = newT;
+  $("rhoSlider").value = newRho; $("rhoVal").textContent = newRho.toFixed(2);
+  $("tempSlider").value = newT;  $("tempVal").textContent = newT.toFixed(2);
+  setEnsemble(ens);
+  init(); sampleAndRender();
+  if (!running) $("runBtn").click();
+}
+$("preSolid").onclick  = () => preset(0.85, 0.10, "nvt");
+$("preLiquid").onclick = () => preset(0.65, 0.55, "nvt");
+$("preGas").onclick    = () => preset(0.10, 1.20, "nvt");
+
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" && e.target.tagName !== "BUTTON" &&
+      e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") {
+    e.preventDefault(); $("runBtn").click();
+  }
+});
+
+/* ---------- go ---------- */
+init();
+sampleAndRender();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

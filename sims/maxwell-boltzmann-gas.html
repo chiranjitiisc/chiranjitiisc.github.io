@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maxwell-Boltzmann from Collisions — Single Core (MD made easy)</title>
+<meta name="description" content="Interactive hard-disk gas: watch elastic collisions drive any initial condition to the Maxwell-Boltzmann speed distribution, with live histogram and theory overlay.">
+<style>
+  :root {
+    --bg:#0a111f; --panel:#121c30; --panel2:#0e1728; --border:#22304e;
+    --text:#e7edf7; --muted:#90a1ba; --accent:#4cc9f0; --amber:#f9a03f; --green:#3ddc97;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 16px; }
+  header.bar { border-bottom:1px solid var(--border); padding:14px 0; margin-bottom:18px; }
+  header.bar .wrap { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  header.bar h1 { font-size:20px; margin:0; }
+  header.bar .back { font-size:14px; color:var(--muted); }
+  header.bar .back:hover { color:var(--accent); }
+  .layout { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+  .sim-col { flex:1 1 460px; min-width:320px; }
+  .side-col { flex:0 1 400px; min-width:300px; display:flex; flex-direction:column; gap:14px; }
+  canvas.box { width:100%; display:block; border-radius:14px;
+               border:1px solid var(--border); background:#060b16; }
+  .panel { background:var(--panel); border:1px solid var(--border);
+           border-radius:14px; padding:14px 16px; }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:1px;
+              color:var(--muted); margin:0 0 10px; }
+  .row { display:flex; align-items:center; gap:10px; margin:8px 0; flex-wrap:wrap; }
+  .row label { flex:0 0 118px; font-size:13.5px; color:var(--muted); }
+  .row input[type=range] { flex:1; accent-color:var(--accent); min-width:90px; }
+  .row .val { flex:0 0 48px; text-align:right; font-family:ui-monospace,Consolas,monospace;
+              font-size:13px; }
+  select, button { background:var(--panel2); color:var(--text); border:1px solid var(--border);
+                   border-radius:8px; padding:7px 12px; font-size:14px; cursor:pointer; }
+  select:hover, button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#06212e; font-weight:700; border-color:var(--accent); }
+  .btnrow { display:flex; gap:8px; flex-wrap:wrap; }
+  .check { display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--muted); }
+  .check input { accent-color:var(--accent); }
+  canvas.hist { width:100%; height:230px; display:block; background:var(--panel2);
+                border:1px solid var(--border); border-radius:10px; }
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--muted); margin-top:6px; flex-wrap:wrap; }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px;
+        vertical-align:-1px; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .stat { background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:8px 10px; }
+  .stat .k { font-size:11.5px; color:var(--muted); }
+  .stat .v { font-family:ui-monospace,Consolas,monospace; font-size:14.5px; }
+  .stat .th { font-size:11px; color:var(--muted); }
+  .theory { max-width:860px; margin:34px auto 60px; padding:0 16px; }
+  .theory h2 { font-size:20px; }
+  .theory p, .theory li { color:#c6d1e2; font-size:15.5px; }
+  .theory .try { background:rgba(76,201,240,0.1); border:1px solid rgba(76,201,240,0.4);
+                 border-radius:10px; padding:12px 18px; }
+  .theory .try b { color:var(--accent); }
+  .eq { font-family:Georgia,serif; font-style:italic; font-size:17px; text-align:center;
+        background:var(--panel2); border:1px solid var(--border); border-left:3px solid var(--accent);
+        border-radius:10px; padding:12px; margin:16px 0; }
+  footer { border-top:1px solid var(--border); color:var(--muted); font-size:13.5px;
+           padding:18px 0 26px; text-align:center; }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <a class="back" href="../index.html">&larr; Single Core / all simulations</a>
+    <h1>Maxwell-Boltzmann from Collisions <span style="color:var(--muted);font-weight:400">— order dissolving into statistics</span></h1>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="layout">
+    <div class="sim-col">
+      <canvas id="box" class="box" width="640" height="640"></canvas>
+      <div class="legend" style="margin-top:8px">
+        <span>Colour = speed (blue slow &rarr; orange fast).</span>
+        <span>Walls are perfectly elastic; total energy is exactly conserved.</span>
+      </div>
+    </div>
+
+    <div class="side-col">
+      <div class="panel">
+        <div class="btnrow" style="margin-bottom:10px">
+          <button id="runBtn" class="primary">&#9654; Run</button>
+          <button id="resetBtn">Reset</button>
+        </div>
+        <div class="row">
+          <label for="icSelect">Initial state</label>
+          <select id="icSelect">
+            <option value="mono" selected>All same speed</option>
+            <option value="rand">Random kicks</option>
+            <option value="half">Half fast, half at rest</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="nSelect">Particles N</label>
+          <select id="nSelect"><option>100</option><option selected>200</option><option>300</option></select>
+        </div>
+        <div class="row">
+          <label for="v0Slider">Initial speed v&#8320;</label>
+          <input type="range" id="v0Slider" min="0.5" max="3" step="0.1" value="1.5">
+          <span class="val" id="v0Val">1.5</span>
+        </div>
+        <div class="row">
+          <label for="spSlider">Sim speed</label>
+          <input type="range" id="spSlider" min="1" max="8" step="1" value="3">
+          <span class="val" id="spVal">3&times;</span>
+        </div>
+        <div class="row">
+          <label class="check"><input type="checkbox" id="traceChk"> Track one particle (red, with trail)</label>
+        </div>
+        <div class="row">
+          <label class="check"><input type="checkbox" id="smoothChk" checked> Smooth histogram (time average)</label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Speed distribution</h2>
+        <canvas id="hist" class="hist" width="740" height="440"></canvas>
+        <div class="legend">
+          <span><span class="sw" style="background:#4cc9f0"></span>measured histogram</span>
+          <span><span class="sw" style="background:#f9a03f"></span>Maxwell-Boltzmann (2D) prediction</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Measured vs theory</h2>
+        <div class="stats">
+          <div class="stat"><div class="k">k<sub>B</sub>T (= KE/N)</div><div class="v" id="skT">–</div></div>
+          <div class="stat"><div class="k">&lang;v&rang; measured</div><div class="v" id="svMean">–</div>
+            <div class="th">theory <span id="svMeanTh">–</span></div></div>
+          <div class="stat"><div class="k">v<sub>rms</sub> measured</div><div class="v" id="svRms">–</div>
+            <div class="th">theory <span id="svRmsTh">–</span></div></div>
+          <div class="stat"><div class="k">v<sub>p</sub> (peak) theory</div><div class="v" id="svP">–</div></div>
+          <div class="stat"><div class="k">collisions</div><div class="v" id="sColl">0</div></div>
+          <div class="stat"><div class="k">time</div><div class="v" id="sTime">0</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="theory">
+  <h2>What am I looking at?</h2>
+  <p>
+    A gas of N identical hard disks bounces around a box. Every collision — disk-disk and
+    disk-wall — is perfectly elastic, so the <b>total energy never changes</b>. Yet something
+    dramatic happens to how that energy is <i>shared</i>: start every particle with exactly the
+    same speed, and within seconds collisions redistribute the kinetic energy until the speeds
+    follow the Maxwell-Boltzmann distribution. In 2D:
+  </p>
+  <div class="eq">f(v) = (m v / k<sub>B</sub>T) &middot; exp( &minus;m v&sup2; / 2k<sub>B</sub>T )</div>
+  <p>
+    No thermostat, no randomness is added anywhere — Newton's laws alone produce the
+    statistics. The temperature is fixed by the (conserved) energy through equipartition:
+    each particle carries on average k<sub>B</sub>T of kinetic energy in 2D, so
+    k<sub>B</sub>T = KE<sub>total</sub>/N. The orange curve is drawn from that value alone;
+    nothing is fitted.
+  </p>
+  <div class="try">
+    <b>Things to try:</b>
+    <ul>
+      <li>Start with "All same speed" — the histogram begins as a single spike, then melts into the MB curve. This is irreversibility emerging from reversible dynamics.</li>
+      <li>Try "Half fast, half at rest" — watch energy flow from hot to cold particles until they share one distribution.</li>
+      <li>Track one particle: its speed keeps changing forever, but the <i>distribution</i> is stationary. Individual chaos, collective order.</li>
+      <li>Compare the measured &lang;v&rang; and v<sub>rms</sub> against theory (&lang;v&rang; = &radic;(&pi;k<sub>B</sub>T/2m), v<sub>rms</sub> = &radic;(2k<sub>B</sub>T/m) in 2D).</li>
+    </ul>
+  </div>
+  <p>
+    Background reading:
+    <a href="../notes/temperature-ensembles.html">temperature, ensembles &amp; Maxwell-Boltzmann</a>.
+  </p>
+</section>
+
+<footer><a href="../index.html">Single Core (MD made easy)</a> — free for students, forever.</footer>
+
+<script>
+"use strict";
+/* ================================================================
+   Hard-disk gas: exact elastic collisions -> Maxwell-Boltzmann
+   Units: m = 1, kB = 1. Box is SIZE x SIZE.
+   ================================================================ */
+
+const SIZE = 100;         // box side in sim units
+const R = 1.4;            // disk radius
+let N = 200, v0 = 1.5, ic = "mono";
+let substeps = 3;
+let running = false, time = 0, collisions = 0;
+
+let X, Y, VX, VY;
+let kT = 1, vHistMax = 5;
+let bins, binsEMA;
+const NBINS = 34;
+
+let traced = false, trail = [];
+
+/* ---------- init ---------- */
+function init() {
+  X = new Float64Array(N); Y = new Float64Array(N);
+  VX = new Float64Array(N); VY = new Float64Array(N);
+
+  // non-overlapping start: shuffled grid
+  const n = Math.ceil(Math.sqrt(N));
+  const cell = SIZE / n;
+  const idx = [...Array(n * n).keys()];
+  for (let i = idx.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+  const jit = Math.max(0, cell / 2 - R - 0.05);
+  for (let i = 0; i < N; i++) {
+    const gx = idx[i] % n, gy = Math.floor(idx[i] / n);
+    X[i] = (gx + 0.5) * cell + jit * (2 * Math.random() - 1);
+    Y[i] = (gy + 0.5) * cell + jit * (2 * Math.random() - 1);
+  }
+
+  // velocities
+  for (let i = 0; i < N; i++) {
+    const th = 2 * Math.PI * Math.random();
+    if (ic === "mono") {
+      VX[i] = v0 * Math.cos(th); VY[i] = v0 * Math.sin(th);
+    } else if (ic === "rand") {
+      VX[i] = v0 * (2 * Math.random() - 1); VY[i] = v0 * (2 * Math.random() - 1);
+    } else { // half fast, half at rest
+      if (i < N / 2) { VX[i] = 1.6 * v0 * Math.cos(th); VY[i] = 1.6 * v0 * Math.sin(th); }
+      else { VX[i] = 0; VY[i] = 0; }
+    }
+  }
+
+  // temperature from (conserved) kinetic energy: kT = KE/N in 2D
+  let ke = 0;
+  for (let i = 0; i < N; i++) ke += 0.5 * (VX[i] * VX[i] + VY[i] * VY[i]);
+  kT = ke / N;
+  vHistMax = 3.1 * Math.sqrt(2 * kT);   // covers the distribution comfortably
+
+  bins = new Float64Array(NBINS);
+  binsEMA = new Float64Array(NBINS);
+  time = 0; collisions = 0; trail = [];
+}
+
+/* ---------- dynamics ---------- */
+function stepOnce(dt) {
+  // free flight + walls
+  for (let i = 0; i < N; i++) {
+    X[i] += VX[i] * dt; Y[i] += VY[i] * dt;
+    if (X[i] < R)        { X[i] = R;        VX[i] = Math.abs(VX[i]); }
+    if (X[i] > SIZE - R) { X[i] = SIZE - R; VX[i] = -Math.abs(VX[i]); }
+    if (Y[i] < R)        { Y[i] = R;        VY[i] = Math.abs(VY[i]); }
+    if (Y[i] > SIZE - R) { Y[i] = SIZE - R; VY[i] = -Math.abs(VY[i]); }
+  }
+  // pair collisions (equal masses: exchange normal velocity components)
+  const D2 = 4 * R * R;
+  for (let i = 0; i < N - 1; i++) {
+    for (let j = i + 1; j < N; j++) {
+      const dx = X[j] - X[i], dy = Y[j] - Y[i];
+      const d2 = dx * dx + dy * dy;
+      if (d2 < D2 && d2 > 1e-12) {
+        const d = Math.sqrt(d2);
+        const nx = dx / d, ny = dy / d;
+        const rel = (VX[i] - VX[j]) * nx + (VY[i] - VY[j]) * ny;
+        if (rel > 0) {                    // approaching
+          VX[i] -= rel * nx; VY[i] -= rel * ny;
+          VX[j] += rel * nx; VY[j] += rel * ny;
+          collisions++;
+        }
+        const push = 0.5 * (2 * R - d) + 1e-4;  // separate overlap
+        X[i] -= push * nx; Y[i] -= push * ny;
+        X[j] += push * nx; Y[j] += push * ny;
+      }
+    }
+  }
+  time += dt;
+}
+
+function advanceFrame() {
+  // choose dt so nothing moves more than ~0.6 R per substep
+  let vmax = 0.01;
+  for (let i = 0; i < N; i++) {
+    const s = VX[i] * VX[i] + VY[i] * VY[i];
+    if (s > vmax) vmax = s;
+  }
+  vmax = Math.sqrt(vmax);
+  const dt = Math.min(0.35, 0.6 * R / vmax);
+  for (let s = 0; s < substeps; s++) stepOnce(dt);
+
+  if (traced) {
+    trail.push([X[0], Y[0]]);
+    if (trail.length > 400) trail.shift();
+  }
+}
+
+/* ---------- drawing ---------- */
+const box = document.getElementById("box");
+const bctx = box.getContext("2d");
+
+function speedColor(s) {
+  if (s < 0.5) { const t = s / 0.5;
+    return `rgb(${Math.round(73+153*t)},${Math.round(119+113*t)},240)`; }
+  const t = (s - 0.5) / 0.5;
+  return `rgb(${Math.round(226+23*t)},${Math.round(232-117*t)},${Math.round(240-218*t)})`;
+}
+
+function draw() {
+  const W = box.width, scale = W / SIZE;
+  bctx.clearRect(0, 0, W, W);
+  const vRef = 2.3 * Math.sqrt(kT);
+  if (traced && trail.length > 1) {
+    bctx.strokeStyle = "rgba(249,80,80,0.5)"; bctx.lineWidth = 1.4;
+    bctx.beginPath();
+    bctx.moveTo(trail[0][0] * scale, trail[0][1] * scale);
+    for (const p of trail) bctx.lineTo(p[0] * scale, p[1] * scale);
+    bctx.stroke();
+  }
+  for (let i = 0; i < N; i++) {
+    const v = Math.sqrt(VX[i] * VX[i] + VY[i] * VY[i]);
+    bctx.fillStyle = (traced && i === 0) ? "#f95050" : speedColor(Math.min(1, v / vRef));
+    bctx.beginPath();
+    bctx.arc(X[i] * scale, Y[i] * scale, R * scale, 0, 6.2832);
+    bctx.fill();
+  }
+}
+
+/* ---------- histogram ---------- */
+const hist = document.getElementById("hist");
+const hctx = hist.getContext("2d");
+let smooth = true;
+
+function mb2d(v) { return (v / kT) * Math.exp(-v * v / (2 * kT)); }
+
+function drawHist() {
+  const W = hist.width, H = hist.height;
+  const padL = 34, padB = 26, padT = 12;
+  const plotW = W - padL - 8, plotH = H - padT - padB;
+  hctx.clearRect(0, 0, W, H);
+
+  // current sample
+  bins.fill(0);
+  const bw = vHistMax / NBINS;
+  for (let i = 0; i < N; i++) {
+    const v = Math.sqrt(VX[i] * VX[i] + VY[i] * VY[i]);
+    const b = Math.min(NBINS - 1, Math.floor(v / bw));
+    bins[b]++;
+  }
+  const alpha = smooth ? 0.06 : 1;
+  for (let b = 0; b < NBINS; b++)
+    binsEMA[b] += alpha * (bins[b] - binsEMA[b]);
+
+  // density scale
+  const peakTheory = mb2d(Math.sqrt(kT));   // f at v_p
+  let maxBar = 0;
+  for (let b = 0; b < NBINS; b++) {
+    const dens = binsEMA[b] / N / bw;
+    if (dens > maxBar) maxBar = dens;
+  }
+  const yMax = 1.25 * Math.max(peakTheory, maxBar, 1e-6);
+  const xOf = v => padL + v / vHistMax * plotW;
+  const yOf = f => padT + plotH - Math.min(1, f / yMax) * plotH;
+
+  // axes
+  hctx.strokeStyle = "#22304e"; hctx.lineWidth = 1;
+  hctx.strokeRect(padL, padT, plotW, plotH);
+
+  // bars
+  for (let b = 0; b < NBINS; b++) {
+    const dens = binsEMA[b] / N / bw;
+    const x = xOf(b * bw), y = yOf(dens);
+    hctx.fillStyle = "rgba(76,201,240,0.55)";
+    hctx.fillRect(x, y, plotW / NBINS - 1.5, padT + plotH - y);
+  }
+
+  // theory curve
+  hctx.strokeStyle = "#f9a03f"; hctx.lineWidth = 2.2; hctx.beginPath();
+  for (let px = 0; px <= plotW; px += 2) {
+    const v = px / plotW * vHistMax;
+    const y = yOf(mb2d(v));
+    px === 0 ? hctx.moveTo(padL + px, y) : hctx.lineTo(padL + px, y);
+  }
+  hctx.stroke();
+
+  // markers: v_p, <v>, v_rms
+  const marks = [
+    [Math.sqrt(kT), "vₚ"],
+    [Math.sqrt(Math.PI * kT / 2), "⟨v⟩"],
+    [Math.sqrt(2 * kT), "vᵣₘₛ"]
+  ];
+  hctx.font = "12px ui-monospace, monospace";
+  for (const [v, lbl] of marks) {
+    const x = xOf(v);
+    hctx.strokeStyle = "rgba(144,161,186,0.55)"; hctx.setLineDash([4, 4]);
+    hctx.beginPath(); hctx.moveTo(x, padT); hctx.lineTo(x, padT + plotH); hctx.stroke();
+    hctx.setLineDash([]);
+    hctx.fillStyle = "#90a1ba";
+    hctx.fillText(lbl, x - 8, padT + 14);
+  }
+
+  // x labels
+  hctx.fillStyle = "#90a1ba";
+  hctx.fillText("0", padL - 4, H - 8);
+  hctx.fillText("speed v →", padL + plotW / 2 - 30, H - 8);
+  hctx.fillText(vHistMax.toFixed(1), padL + plotW - 18, H - 8);
+}
+
+/* ---------- stats ---------- */
+function updateStats() {
+  let sv = 0, sv2 = 0;
+  for (let i = 0; i < N; i++) {
+    const v2 = VX[i] * VX[i] + VY[i] * VY[i];
+    sv += Math.sqrt(v2); sv2 += v2;
+  }
+  const id = s => document.getElementById(s);
+  id("skT").textContent = kT.toFixed(3);
+  id("svMean").textContent = (sv / N).toFixed(3);
+  id("svMeanTh").textContent = Math.sqrt(Math.PI * kT / 2).toFixed(3);
+  id("svRms").textContent = Math.sqrt(sv2 / N).toFixed(3);
+  id("svRmsTh").textContent = Math.sqrt(2 * kT).toFixed(3);
+  id("svP").textContent = Math.sqrt(kT).toFixed(3);
+  id("sColl").textContent = collisions;
+  id("sTime").textContent = time.toFixed(0);
+}
+
+/* ---------- loop ---------- */
+function frame() {
+  if (running) {
+    advanceFrame();
+    draw(); drawHist(); updateStats();
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+$("runBtn").onclick = () => {
+  running = !running;
+  $("runBtn").innerHTML = running ? "&#10074;&#10074; Pause" : "&#9654; Run";
+};
+$("resetBtn").onclick = () => { init(); draw(); drawHist(); updateStats(); };
+$("icSelect").onchange = e => { ic = e.target.value; $("resetBtn").click(); };
+$("nSelect").onchange = e => { N = parseInt(e.target.value, 10); $("resetBtn").click(); };
+$("v0Slider").oninput = e => {
+  v0 = parseFloat(e.target.value); $("v0Val").textContent = v0.toFixed(1);
+};
+$("v0Slider").onchange = () => $("resetBtn").click();
+$("spSlider").oninput = e => {
+  substeps = parseInt(e.target.value, 10);
+  $("spVal").innerHTML = substeps + "&times;";
+};
+$("traceChk").onchange = e => { traced = e.target.checked; trail = []; };
+$("smoothChk").onchange = e => { smooth = e.target.checked; };
+
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" && e.target.tagName !== "BUTTON" &&
+      e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") {
+    e.preventDefault(); $("runBtn").click();
+  }
+});
+
+init(); draw(); drawHist(); updateStats();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

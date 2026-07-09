@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Verlet Family: How MD Integrates F = ma — Single Core (MD made easy)</title>
+<meta name="description" content="Why Euler integration fails for molecular dynamics, where the Verlet scheme comes from, the velocity-Verlet algorithm, and how to choose a time step.">
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='11' cy='16' r='6' fill='%234cc9f0'/><circle cx='23' cy='11' r='4' fill='%23f9a03f'/><circle cx='23' cy='22' r='4' fill='%233ddc97'/></svg>">
+</head>
+<body>
+
+<header class="site-head">
+  <div class="wrap">
+    <a class="brand" href="../index.html">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+        <line x1="11" y1="16" x2="23" y2="11" stroke="#4cc9f0" stroke-width="2"/>
+        <line x1="11" y1="16" x2="23" y2="22" stroke="#4cc9f0" stroke-width="2"/>
+        <circle cx="11" cy="16" r="6" fill="#4cc9f0"/>
+        <circle cx="23" cy="11" r="4" fill="#f9a03f"/>
+        <circle cx="23" cy="22" r="4" fill="#3ddc97"/>
+      </svg>
+      Single Core <span class="domain">MD made easy</span>
+    </a>
+    <nav class="site-nav">
+      <a href="../index.html">Simulations</a>
+      <a href="../notes.html" class="active">Notes</a>
+      <a href="../about.html">About</a>
+    </nav>
+  </div>
+</header>
+
+<article class="article">
+  <div class="crumbs"><a href="../notes.html">Notes</a> / Integration</div>
+  <div class="kicker">Note 1</div>
+  <h1>The Verlet family: how MD actually integrates F&nbsp;=&nbsp;ma</h1>
+  <p class="sub">Molecular dynamics is, at heart, just Newton's second law solved on a computer —
+  millions of times. The choice of <i>how</i> to step time forward makes or breaks everything.</p>
+
+  <h2>Why not just use Euler?</h2>
+  <p>
+    The most obvious scheme updates positions and velocities with a straight-line guess:
+  </p>
+  <div class="eq">x(t+&Delta;t) = x(t) + v(t)&Delta;t, &nbsp;&nbsp; v(t+&Delta;t) = v(t) + <span class="frac"><span>F(t)</span><span>m</span></span>&Delta;t</div>
+  <p>
+    This is the <b>forward Euler</b> method, and for MD it is a disaster. Its error per step is
+    O(&Delta;t&sup2;), but the real problem is qualitative: Euler systematically pumps energy into
+    (or out of) the system. Simulate a planet with Euler and it spirals outward; simulate a
+    liquid and it slowly boils itself. For a microcanonical (NVE) simulation, where constant
+    energy is the whole point, that is fatal.
+  </p>
+
+  <h2>The Verlet idea</h2>
+  <p>
+    Write Taylor expansions of the position one step forward and one step backward in time:
+  </p>
+  <div class="eq">x(t &plusmn; &Delta;t) = x(t) &plusmn; v(t)&Delta;t + &frac12;a(t)&Delta;t&sup2; &plusmn; &#8537;b(t)&Delta;t&sup3; + O(&Delta;t&#8308;)</div>
+  <p>
+    Add the two expansions and the odd terms (velocity, third derivative) cancel:
+  </p>
+  <div class="eq"><b>x(t+&Delta;t) = 2x(t) &minus; x(t&minus;&Delta;t) + a(t)&Delta;t&sup2;</b> + O(&Delta;t&#8308;)<span class="lbl">position Verlet</span></div>
+  <p>
+    Two accuracy orders better than Euler, for the same single force evaluation per step —
+    and, crucially, the scheme is <b>time-reversible</b>, just like Newton's equations themselves.
+  </p>
+
+  <h2>Velocity Verlet — the MD workhorse</h2>
+  <p>
+    Position Verlet never mentions velocities, which makes computing kinetic energy and
+    temperature awkward. The algebraically equivalent <b>velocity-Verlet</b> form fixes that,
+    and is what virtually every MD code (and every simulation on this site) uses:
+  </p>
+  <pre><code>for each step:
+    v = v + (dt/2) * F/m        # half kick
+    x = x + dt * v              # drift
+    F = compute_forces(x)       # the expensive part
+    v = v + (dt/2) * F/m        # half kick</code></pre>
+  <p>
+    Same cost as Euler — one force call per step — but with O(&Delta;t&sup2;) global accuracy,
+    exact time-reversibility, and one more almost magical property: it is <b>symplectic</b>.
+    It exactly conserves a "shadow" Hamiltonian close to the true one, so the energy error
+    stays <i>bounded</i>, oscillating around the true value instead of drifting, even over
+    millions of steps. This long-time stability, not raw accuracy, is why Verlet beats
+    fancier high-order integrators (like Runge-Kutta) for MD.
+  </p>
+
+  <h2>Choosing the time step</h2>
+  <p>
+    The rule of thumb: &Delta;t should be a small fraction — roughly 1/20th or less — of the
+    shortest oscillation period in your system. For a harmonic mode of frequency &omega;,
+    Verlet is only stable at all for &omega;&Delta;t &lt; 2, and accurate well below that.
+    In practice:
+  </p>
+  <ul>
+    <li>Lennard-Jones fluids in reduced units: &Delta;t* &asymp; 0.002–0.005 (this site uses 0.004).</li>
+    <li>All-atom biomolecular MD: the fastest motion is a C–H bond stretch (~10 fs period), forcing &Delta;t &asymp; 1–2 fs unless those bonds are constrained.</li>
+    <li>Too large a step shows up as total energy drifting or exploding — try it yourself below.</li>
+  </ul>
+
+  <div class="try">
+    <b>See it live:</b> open the <a href="../sims/lennard-jones-fluid.html">Lennard-Jones fluid</a>,
+    switch to NVE and watch E/N stay flat while KE and PE mirror each other — that's velocity
+    Verlet's bounded energy error. Then open the
+    <a href="../sims/harmonic-chain-phonons.html">harmonic chain</a>: every atom there is
+    advanced by exactly the loop printed above.
+  </div>
+</article>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <span>Single Core (MD made easy) — free for students, forever.</span>
+    <span>Content: CC BY 4.0 · <a href="../about.html">About this site</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
